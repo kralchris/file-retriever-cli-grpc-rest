@@ -1,6 +1,6 @@
 """
-NASDAQ-100 index - Machine Learning-Driven Algo Quantitative Trading Strategy
-                    with Systematic Market Prediction Framework
+CLI app - CLI application to retrieve and prints data
+          from backends.
 
 @author: Kristijan <kristijan.sarin@gmail.com>
 """
