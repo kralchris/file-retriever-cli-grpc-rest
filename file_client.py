@@ -1,5 +1,5 @@
 """
-CLI app - CLI application to retrieve and prints data
+CLI app - CLI application to retrieve and print data
           from backends.
 
 @author: Kristijan <kristijan.sarin@gmail.com>
