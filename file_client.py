@@ -5,11 +5,14 @@ CLI app - CLI application to retrieve and print data
 @author: Kristijan <kristijan.sarin@gmail.com>
 """
 
+
 import click
 import requests
 import grpc
 import logging
+import sys
 from pathlib import Path
+from typing import Union
 import service_file_pb2
 import service_file_pb2_grpc
 
@@ -23,63 +26,78 @@ ERROR_MESSAGES = {
     "unexpected_error": "An unexpected error occurred. Please try again."
 }
 
+def output_metadata(name, size, mimetype, create_datetime, output):
+    """Formats and outputs file metadata."""
+    metadata = (f"File Metadata:\n- Name: {name}\n- Size: {size} bytes\n"
+                f"- MIME Type: {mimetype}\n- Created: {create_datetime}")
+    if output == '-':
+        click.secho(metadata, fg='green')
+    else:
+        with open(output, 'w') as f:
+            f.write(metadata)
+        click.secho(f"Metadata saved to {output}", fg='cyan')
+
 # REST API Client
-def rest_stat(base_url, uuid):
+def rest_stat(base_url, uuid, output):
     try:
         url = f"{base_url}/file/{uuid}/stat/"
         response = requests.get(url)
         if response.status_code == 404:
-            click.echo(ERROR_MESSAGES["not_found"])
-            return
+            click.secho(ERROR_MESSAGES["not_found"], fg='red')
+            raise SystemExit(1)
         response.raise_for_status()
         data = response.json()
-        click.echo(f"File Metadata:\n- Name: {data['name']}\n- Size: {data['size']} bytes\n"
-                   f"- MIME Type: {data['mimetype']}\n- Created: {data['create_datetime']}")
+        output_metadata(data['name'], data['size'], data['mimetype'], data['create_datetime'], output)
     except requests.ConnectionError:
-        click.echo(ERROR_MESSAGES["server_unreachable"])
+        click.secho(ERROR_MESSAGES["server_unreachable"], fg='red')
+        raise SystemExit(1)
     except Exception as e:
         logging.error(f"Error during REST stat request: {e}")
-        click.echo(ERROR_MESSAGES["unexpected_error"])
+        click.secho(ERROR_MESSAGES["unexpected_error"], fg='red')
+        raise SystemExit(1)
 
 def rest_read(base_url, uuid, output):
     try:
         url = f"{base_url}/file/{uuid}/read/"
         response = requests.get(url)
         if response.status_code == 404:
-            click.echo(ERROR_MESSAGES["not_found"])
-            return
+            click.secho(ERROR_MESSAGES["not_found"], fg='red')
+            raise SystemExit(1)
         response.raise_for_status()
         content = response.content
         if output == '-':
-            click.echo(content.decode(errors="replace"))
+            click.secho(content.decode(errors="replace"), fg='green')
         else:
             with open(output, 'wb') as f:
                 f.write(content)
-            click.echo(f"Content saved to {output}")
+            click.secho(f"Content saved to {output}", fg='cyan')
     except requests.ConnectionError:
-        click.echo(ERROR_MESSAGES["server_unreachable"])
+        click.secho(ERROR_MESSAGES["server_unreachable"], fg='red')
+        raise SystemExit(1)
     except Exception as e:
         logging.error(f"Error during REST read request: {e}")
-        click.echo(ERROR_MESSAGES["unexpected_error"])
+        click.secho(ERROR_MESSAGES["unexpected_error"], fg='red')
+        raise SystemExit(1)
 
 # gRPC Client
-def grpc_stat(grpc_server, uuid):
+def grpc_stat(grpc_server, uuid, output):
     try:
         with grpc.insecure_channel(grpc_server) as channel:
             stub = service_file_pb2_grpc.FileServiceStub(channel)
             request = service_file_pb2.StatRequest(uuid=uuid)
             response = stub.Stat(request)
-            click.echo(f"File Metadata:\n- Name: {response.name}\n- Size: {response.size} bytes\n"
-                       f"- MIME Type: {response.mimetype}\n- Created: {response.create_datetime}")
+            output_metadata(response.name, response.size, response.mimetype, response.create_datetime, output)
     except grpc.RpcError as e:
         if e.code() == grpc.StatusCode.NOT_FOUND:
-            click.echo(ERROR_MESSAGES["not_found"])
+            click.secho(ERROR_MESSAGES["not_found"], fg='red')
         else:
-            click.echo(ERROR_MESSAGES["server_unreachable"])
+            click.secho(ERROR_MESSAGES["server_unreachable"], fg='red')
         logging.error(f"gRPC Error during stat request: {e}")
+        raise SystemExit(1)
     except Exception as e:
         logging.error(f"Unexpected error during gRPC stat request: {e}")
-        click.echo(ERROR_MESSAGES["unexpected_error"])
+        click.secho(ERROR_MESSAGES["unexpected_error"], fg='red')
+        raise SystemExit(1)
 
 def grpc_read(grpc_server, uuid, output):
     try:
@@ -89,20 +107,22 @@ def grpc_read(grpc_server, uuid, output):
             response = stub.Read(request)
             content = response.content
             if output == '-':
-                click.echo(content.decode(errors="replace"))
+                click.secho(content.decode(errors="replace"), fg='green')
             else:
                 with open(output, 'wb') as f:
                     f.write(content)
-                click.echo(f"Content saved to {output}")
+                click.secho(f"Content saved to {output}", fg='cyan')
     except grpc.RpcError as e:
         if e.code() == grpc.StatusCode.NOT_FOUND:
-            click.echo(ERROR_MESSAGES["not_found"])
+            click.secho(ERROR_MESSAGES["not_found"], fg='red')
         else:
-            click.echo(ERROR_MESSAGES["server_unreachable"])
+            click.secho(ERROR_MESSAGES["server_unreachable"], fg='red')
         logging.error(f"gRPC Error during read request: {e}")
+        raise SystemExit(1)
     except Exception as e:
         logging.error(f"Unexpected error during gRPC read request: {e}")
-        click.echo(ERROR_MESSAGES["unexpected_error"])
+        click.secho(ERROR_MESSAGES["unexpected_error"], fg='red')
+        raise SystemExit(1)
 
 # CLI Command
 @click.command()
@@ -114,14 +134,15 @@ def grpc_read(grpc_server, uuid, output):
 @click.option('--output', default='-', help='File to store output, default is stdout')
 def file_client(command, uuid, backend, grpc_server, base_url, output):
     """CLI to retrieve file metadata and contents."""
+    click.secho(f"Using {backend.upper()} backend...", fg='blue')
     if backend == 'grpc':
         if command == 'stat':
-            grpc_stat(grpc_server, uuid)
+            grpc_stat(grpc_server, uuid, output)
         elif command == 'read':
             grpc_read(grpc_server, uuid, output)
     elif backend == 'rest':
         if command == 'stat':
-            rest_stat(base_url, uuid)
+            rest_stat(base_url, uuid, output)
         elif command == 'read':
             rest_read(base_url, uuid, output)
 
