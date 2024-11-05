@@ -5,7 +5,6 @@ CLI app - CLI application to retrieve and print data
 @author: Kristijan <kristijan.sarin@gmail.com>
 """
 
-
 import click
 import requests
 import grpc
